@@ -1,0 +1,4 @@
+node_modules/
+*.tgz
+.slim/deepwork/
+.artifacts/
