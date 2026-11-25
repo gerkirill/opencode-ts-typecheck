@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process"
 import { access, readFile, realpath, stat } from "node:fs/promises"
 import path from "node:path"
+import { stripVTControlCharacters } from "node:util"
 
 export type CheckCommand = { command: string; args: string[]; cwd: string; label: string }
 export type CheckResult = {
@@ -147,7 +148,7 @@ export async function runCheck(
       } else if (exitCode === 0) {
         resolve({ kind: "passed", output, exitCode })
       } else {
-        const configurationError = /error TS(?:1800[23]|5\d{3}|6[01]53)\b|tsconfig[^\r\n]*\.json[^\r\n]*error TS|Cannot find module .*typescript|command not found|(?:^|\n)(?:\/bin\/)?(?:ba)?sh:[^\r\n]*not found|not recognized as an internal/i.test(output)
+        const configurationError = /error TS(?:1800[23]|5\d{3}|6[01]53)\b|tsconfig[^\r\n]*\.json[^\r\n]*error TS|Cannot find module .*typescript|command not found|(?:^|\n)(?:\/bin\/)?(?:ba)?sh:[^\r\n]*not found|not recognized as an internal/i.test(stripVTControlCharacters(output))
         resolve({ kind: configurationError ? "unresolved" : "failed", output, exitCode, ...(configurationError ? { reason: "Typecheck configuration or tool error" } : {}) })
       }
     })
