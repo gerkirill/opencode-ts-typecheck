@@ -36,6 +36,8 @@ The playground has its own TypeScript dependency and configuration.
 OpenCode watches configuration directories, but source in an explicitly linked
 directory is not necessarily watched. Use `/reload` in the exercise session
 after plugin edits; verify new behavior instead of assuming hot reload.
+For a fresh isolated host, launch the exercise session with
+`opencode --standalone .` rather than restarting a shared service.
 
 ## Use in a project
 
@@ -156,3 +158,6 @@ Host libraries are peer dependencies. Development uses the matching
 runtime into a plugin. `npm audit` currently reports moderate transitive
 findings through the pinned host SDK development dependency graph. They are
 not fixed by silently upgrading the SDK beyond the tested host version.
+
+See [verification evidence](docs/verification.md) in the repository for the
+tested host, automated coverage, packaging checks, and the live repair result.
