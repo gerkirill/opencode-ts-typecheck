@@ -7,9 +7,10 @@ import { createGate, options, permissionResource } from "./gate.ts"
 type SessionID = Parameters<Plugin.Context["session"]["get"]>[0]["sessionID"]
 // Gate IDs originate exclusively from SDK hooks, so preserve their brand at the adapter boundary.
 const sessionID = (id: string) => id as SessionID
+const pluginID = "opencode-ts-typecheck"
 
 export default Plugin.define({
-  id: "typecheck",
+  id: pluginID,
   effect: (ctx) => Effect.gen(function* () {
     const config = options(ctx.options)
     const stopped = yield* Deferred.make<void>()
@@ -19,7 +20,7 @@ export default Plugin.define({
       Effect.raceFirst(work, Deferred.await(stopped)).pipe(
         Effect.catchCause((cause) => Cause.hasInterrupts(cause) ? Effect.failCause(cause) :
           ctx.session.instructions.entry.put({
-            sessionID: id, key: "typecheck",
+            sessionID: id, key: pluginID,
             value: `Typecheck gate FINAL — UNRESOLVED\n${Cause.pretty(cause)}\nDo not claim typecheck success.`,
           }).pipe(Effect.andThen(Effect.failCause(cause)))),
         Effect.orDie,
@@ -42,7 +43,7 @@ export default Plugin.define({
       }).pipe(Effect.asVoid),
       report: (id, text) => Effect.gen(function* () {
         const brandedID = sessionID(id)
-        yield* ctx.session.instructions.entry.put({ sessionID: brandedID, key: "typecheck", value: text })
+        yield* ctx.session.instructions.entry.put({ sessionID: brandedID, key: pluginID, value: text })
         // The gate latches terminal BEFORE this admission. This is a status/report turn,
         // not a fourth remediation request; its completion must not trigger more repair.
         yield* ctx.session.synthetic({
@@ -53,12 +54,12 @@ export default Plugin.define({
         })
       }),
       clearStatus: (id) => ctx.session.instructions.entry.remove({
-        sessionID: sessionID(id), key: "typecheck",
+        sessionID: sessionID(id), key: pluginID,
       }),
     }, config)
     yield* ctx.session.hook("prompt", (event) => live(event.sessionID, Effect.gen(function* () {
       gate.prompt(event.sessionID)
-      yield* ctx.session.instructions.entry.remove({ sessionID: event.sessionID, key: "typecheck" })
+      yield* ctx.session.instructions.entry.remove({ sessionID: event.sessionID, key: pluginID })
     })))
     yield* ctx.session.hook("context", (event) => live(event.sessionID, Effect.gen(function* () {
       const session = yield* ctx.session.get({ sessionID: event.sessionID })

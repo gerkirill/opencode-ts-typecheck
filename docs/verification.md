@@ -28,6 +28,10 @@ review blockers were identified at this fidelity.
 
 ## Host activation
 
+The activation and live-repair evidence below predates the rename to
+`opencode-ts-typecheck`; it records the original internal ID `typecheck`.
+No new paid live run was performed for the rename.
+
 The installed host's `/api/plugin` response for the disposable fixture's
 `location[directory]` reported local plugin `typecheck` as **active**.
 This establishes activation, not a completed model repair loop.
@@ -74,6 +78,27 @@ After completion, `npm run typecheck` in the fixture independently passed
 
 Raw disposable logs/context and the tarball are under ignored `.artifacts/`.
 No paid model request is part of the automated suite.
+
+## Rename and npm release preparation
+
+The package and internal plugin ID are now `opencode-ts-typecheck`, version `0.1.0`.
+Instruction-entry keys use the same ID. Root and playground lockfiles match
+their renamed packages. MIT licensing was explicitly selected for this release.
+
+- `FORCE_COLOR=1 npm publish --dry-run --json` passed, including the
+  `prepublishOnly` typecheck and all 30 tests.
+- The playground typecheck passed.
+- `npm pack --json --pack-destination .artifacts` produced
+  `opencode-ts-typecheck-0.1.0.tgz` with exactly seven files: package metadata,
+  README, LICENSE, and the four source modules.
+- Installing that archive into a disposable project with matching host
+  peers and importing it with `node --import tsx` passed. Assertions verified
+  the package name, plugin ID, MIT metadata, Effect entrypoint, exact file
+  allowlist, and byte-for-byte equality with the source and shipped documents.
+
+The earlier six-file packaging evidence describes the pre-license artifact.
+The dry-run does not establish real publishing authorization or reserve the
+package name. No package was uploaded, and no public repository URL was invented.
 
 ## Security and limits
 

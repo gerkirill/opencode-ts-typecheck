@@ -1,6 +1,7 @@
-# opencode-typecheck
+# opencode-ts-typecheck
 
-A completion gate for **OpenCode 2.4.1**. When relevant project files change
+Automatic TypeScript checking and agent repair for **OpenCode 2.4.1**.
+When relevant project files change
 during a session, run a typecheck before completion. Give failing diagnostics
 back to the agent so it can fix them and check again.
 
@@ -41,24 +42,26 @@ For a fresh isolated host, launch the exercise session with
 
 ## Use in a project
 
-For local development, add a directory path to that project's `opencode.json`:
+After the package is published, add it to your project's `opencode.json`:
 
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugins": ["/absolute/path/to/opencode-typecheck"]
+  "plugins": ["opencode-ts-typecheck"]
 }
 ```
 
 The package exports TypeScript source directly, as supported by OpenCode.
-No build or global installation is needed.
+No build or global installation is needed. OpenCode resolves the npm package.
+For local development before publication, use the checkout's absolute directory
+path instead of the package name. The plugin ID is also `opencode-ts-typecheck`.
 
 Optional bounds use the object form of the plugin entry:
 
 ```json
 {
   "plugins": [{
-    "package": "/absolute/path/to/opencode-typecheck",
+    "package": "opencode-ts-typecheck",
     "options": {
       "maxAttempts": 3,
       "timeoutMs": 60000,
@@ -145,13 +148,22 @@ background work is not assumed to wake the parent.
 ```sh
 npm run check
 npm pack --dry-run
-npm pack
+npm pack --pack-destination .artifacts
 ```
 
-The package allowlist includes source and documentation, not the playground,
-tests, local evidence, or Deepwork state. Test the generated tarball in a
-disposable project before release. When ready, publish explicitly with
-`npm publish`; repository setup and tests do not publish anything.
+Create `.artifacts` first if it does not exist. The package contains only
+`package.json`, `README.md`, `LICENSE`, and the four source modules—not the
+playground, tests, local evidence, or process state.
+Test the generated tarball in a disposable project before release.
+
+Before the first release, authenticate with npm (`npm login`) and confirm the
+package name is still available. No repository URL is declared until a public
+repository exists. Version `0.1.0` is the initial release.
+Use `npm publish --dry-run` to inspect the release without uploading it, then
+explicitly run `npm publish` when ready. Both commands run `prepublishOnly`,
+which requires the repository typecheck and tests to pass.
+Registry and public access are set in `publishConfig`.
+Publishing a prebuilt tarball does not replace the source-check step above.
 
 Host libraries are peer dependencies. Development uses the matching
 `@opencode/plugin@2.4.1` and `effect@4.1.0`; do not bundle a second Effect
@@ -163,3 +175,7 @@ See [verification evidence](docs/verification.md) in the repository for the
 tested host, automated coverage, packaging checks, and the live repair result.
 Design choices, alternatives, and trade-offs are recorded in the
 [architecture decision records](docs/ADR/README.md).
+
+## License
+
+[MIT](LICENSE).

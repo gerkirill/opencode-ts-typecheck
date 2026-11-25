@@ -14,7 +14,7 @@ add avoidable compatibility and release risks.
 Export `src/index.ts` directly as an ESM package, without a build/bundle step.
 Declare the plugin SDK and Effect as peer dependencies, with matching pinned
 development versions for the verified host: SDK 2.4.1 and Effect 4.1.0.
-Use a package-file allowlist containing source and README; npm also includes
+Use a package-file allowlist containing source, README, and the release license; npm also includes
 package metadata. Keep tests, playground, process state, and local evidence out.
 
 Verify the packed artifact, not only the linked development directory.

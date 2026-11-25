@@ -1,5 +1,5 @@
 {
-  "name": "opencode-typecheck-playground",
+  "name": "opencode-ts-typecheck-playground",
   "private": true,
   "type": "module",
   "scripts": { "typecheck": "tsc --noEmit" },

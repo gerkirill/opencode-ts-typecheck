@@ -337,7 +337,7 @@ test("protocol harness: both resume policies re-enter idle; admission budget is 
 })
 
 test("options are bounded and plugin uses Effect SDK registration", () => {
-  assert.equal(plugin.id, "typecheck")
+  assert.equal(plugin.id, "opencode-ts-typecheck")
   assert.equal(typeof plugin.effect, "function")
   assert.throws(() => options({ maxAttempts: 0 }), /maxAttempts/)
   assert.throws(() => options({ timeoutMs: Infinity }), /timeoutMs/)
