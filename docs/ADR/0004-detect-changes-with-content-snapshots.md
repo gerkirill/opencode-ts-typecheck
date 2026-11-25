@@ -3,6 +3,10 @@
 - **Status:** Accepted
 - **Date:** 2026-11-25
 
+Applicability update: [ADR 0016](0016-skip-unsupported-projects-before-scanning.md)
+limits snapshots to requests with root typecheck support; unsupported requests
+never enter this discovery path.
+
 ## Context
 
 Edits can come from patch tools, shell commands, or other execution paths.

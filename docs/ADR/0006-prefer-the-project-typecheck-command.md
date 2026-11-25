@@ -3,6 +3,10 @@
 - **Status:** Accepted
 - **Date:** 2026-11-25
 
+Applicability update: [ADR 0016](0016-skip-unsupported-projects-before-scanning.md)
+quietly skips requests that begin without either supported root entrypoint.
+Missing configuration after activation remains unresolved.
+
 ## Context
 
 Projects may use framework-specific checkers, multiple compiler projects, or

@@ -19,6 +19,33 @@ review blockers were identified at this fidelity.
 
 ## Automated evidence
 
+### Unsupported-project fast path (2026-11-25)
+
+- Final `npm run check` passed (exit 0): plugin/tests typecheck and all 40
+  automated tests. Log: `.artifacts/applicability-check-retry.log`.
+- New tests establish a single root-only applicability probe per request,
+  no snapshot/select/permission/check/repair/report calls for skipped requests,
+  next-prompt activation/deactivation, independent child decisions, concurrent
+  callbacks, stale-probe interruption, and directory safety.
+- A real-filesystem fixture joins the production probe to the gate with
+  generated JSON/JS under `.venv`, `target`, and `generated`. JSON changes and a
+  config added mid-request never enter the expensive path. Root probe tests
+  cover nested-only configs, missing tools, invalid scripts, malformed manifests,
+  metadata IO errors, and cancellation.
+- Focused `npx tsx --test tests/checker.test.ts tests/gate.test.ts` initially
+  exited 1 because a test deliberately entered a supported child's forbidden
+  snapshot/report stubs (`.artifacts/applicability-focused.log`). Separating
+  the child-independence assertion fixed that test; the focused rerun passed
+  37 tests (exit 0, `.artifacts/applicability-focused-retry.log`).
+- The first broad `npm run check` exited 1 during typechecking because the
+  shared-manifest refactor left an out-of-scope error-message variable
+  (`.artifacts/applicability-check.log`). Replaced it with the manifest path and
+  tightened the invalid-manager assertion; the final broad check above passed.
+- This is deterministic no-scan evidence, not a latency benchmark. No new paid
+  live-agent run or packaging test was performed for this change.
+
+### Original release evidence
+
 - Repository typecheck and 30 automated tests passed with
   `npm run check` (exit 0). SDK integration typechecking caught the unavailable
   `Agent.ID.makeUnsafe`; the implementation uses the published `make` method.

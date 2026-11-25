@@ -3,6 +3,10 @@
 - **Status:** Accepted
 - **Date:** 2026-11-25
 
+Applicability update: [ADR 0016](0016-skip-unsupported-projects-before-scanning.md)
+adds a root-only probe before recursive discovery. Nested-only configurations do
+not activate discovery.
+
 ## Context
 
 Typecheck inputs extend beyond `.ts` files, but a complete compiler dependency

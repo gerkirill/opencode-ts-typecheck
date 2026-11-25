@@ -1,10 +1,10 @@
 import assert from "node:assert/strict"
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 import { fileURLToPath } from "node:url"
-import { runCheck, selectCommand, type CheckCommand } from "../src/checker.js"
+import { applicable, runCheck, selectCommand, type CheckCommand } from "../src/checker.js"
 
 const root = fileURLToPath(new URL("..", import.meta.url))
 const options = { timeoutMs: 10_000, maxOutputBytes: 64_000 }
@@ -16,6 +16,48 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
 function node(cwd: string, source: string): CheckCommand {
   return { command: process.execPath, args: ["-e", source], cwd, label: "node fixture" }
 }
+
+test("applicability uses only root metadata, not ecosystem files or nested configs", async (t) => {
+  const dir = await fixture(t)
+  assert.equal(await applicable(dir), false)
+  for (const name of [".venv", "target", "packages/nested"]) {
+    await mkdir(path.join(dir, name), { recursive: true })
+    await writeFile(path.join(dir, name, "tsconfig.json"), "{broken nested config")
+    await writeFile(path.join(dir, name, "package.json"), "{broken nested manifest")
+  }
+  await writeFile(path.join(dir, "pyproject.toml"), "")
+  await writeFile(path.join(dir, "Cargo.toml"), "")
+  await writeFile(path.join(dir, "package.json"), '{"scripts":{"test":"whatever"}}')
+  assert.equal(await applicable(dir), false)
+  await writeFile(path.join(dir, "tsconfig.json"), "{config contents are not parsed here")
+  assert.equal(await applicable(dir), true)
+  await rm(path.join(dir, "tsconfig.json"))
+  // No tools are installed; even manager/lockfile resolution must wait until execution.
+  await writeFile(path.join(dir, "package.json"), JSON.stringify({
+    scripts: { typecheck: "custom-checker" }, packageManager: "invalid",
+  }))
+  assert.equal(await applicable(dir), true)
+})
+
+test("applicability preserves metadata errors and supports cancellation", async (t) => {
+  const dir = await fixture(t)
+  const manifest = path.join(dir, "package.json")
+  for (const content of ["{broken", "[]", "null"]) {
+    await writeFile(manifest, content)
+    await assert.rejects(applicable(dir), /Cannot read package.json/)
+  }
+  await writeFile(path.join(dir, "tsconfig.json"), "{}")
+  for (const typecheck of ["", " ", 42, false, null]) {
+    await writeFile(manifest, JSON.stringify({ scripts: { typecheck } }))
+    await assert.rejects(applicable(dir), /Invalid scripts.typecheck/)
+  }
+  await rm(manifest)
+  await mkdir(manifest)
+  await assert.rejects(applicable(dir), /Cannot read package.json/)
+  const controller = new AbortController()
+  controller.abort()
+  await assert.rejects(applicable(dir, controller.signal), { name: "AbortError" })
+})
 
 test("typecheck script takes precedence, preserves shell script semantics, and runs in cwd", async (t) => {
   const dir = await fixture(t)
@@ -43,7 +85,7 @@ test("manager selection, conflicts, malformed manifest and explicit manager", as
   await writeFile(manifest, JSON.stringify({ scripts: { typecheck: "whatever" }, packageManager: "bun@1.3.0" }))
   assert.equal((await selectCommand(dir)).command, "bun")
   await writeFile(manifest, JSON.stringify({ scripts: { typecheck: "whatever" }, packageManager: "npm;echo danger" }))
-  await assert.rejects(selectCommand(dir), /packageManager/)
+  await assert.rejects(selectCommand(dir), /Invalid or unsupported packageManager in .*package\.json/)
   await writeFile(manifest, "{broken")
   await assert.rejects(selectCommand(dir), /package.json/)
   for (const typecheck of ["", "  ", 42, null, false]) {

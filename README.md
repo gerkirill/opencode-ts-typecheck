@@ -41,11 +41,30 @@ Invalid options fail activation.
 
 ## Behavior and limitations
 
+### Unsupported projects
+
+Before scanning, the plugin checks only the session directory's root
+`package.json` and whether root `tsconfig.json` exists. It activates when there
+is a nonempty `scripts.typecheck` string or a root `tsconfig.json`. Explicit
+scripts remain authoritative, even for non-TypeScript checkers.
+
+Otherwise, the request is quietly skipped: no recursive traversal, snapshots,
+hashing, compiler discovery, checker processes, permission requests, or diagnostic
+turns. Hook dispatch and small in-memory session state remain. Detection does not
+search nested packages or ancestors, and its cost depends on root metadata, not
+the number of files in the repository.
+
+Applicability is checked once per genuine user request and cached through model
+steps and synthetic turns. Adding a config or script during a skipped request
+activates checking on the **next genuine user prompt**, not the current request.
+Malformed/unreadable manifests or invalid declared typecheck scripts are
+configuration errors, not unsupported-project skips.
+
 ### Command selection and permissions
 
 1. If the session directory's `package.json` defines `scripts.typecheck`, use
    the project's package manager to run that exact script.
-2. Otherwise, run locally available `tsc --noEmit`.
+2. Otherwise, require root `tsconfig.json` and run locally available `tsc --noEmit`.
 
 Install TypeScript and the selected package manager in the target project.
 The plugin never downloads a compiler through `npx` or installs missing tools,
@@ -71,8 +90,9 @@ The plugin cannot guarantee that a model can repair every project.
 
 ### Checked files
 
-Before the first model call, the plugin snapshots relevant inputs. At completion,
-it compares file contents and paths—not Git status or edit-tool calls. This catches
+For applicable requests, the plugin snapshots relevant inputs before the first
+model call. At completion, it compares file contents and paths—not Git status or
+edit-tool calls. This catches
 shell edits, additions, and deletions without triggering on pre-existing changes.
 
 Coverage includes TypeScript/TSX and JS-family source, declarations,

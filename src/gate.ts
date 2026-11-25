@@ -29,6 +29,7 @@ export function options(input: Readonly<Record<string, unknown>> = {}): Options 
 
 /** All asynchronous boundaries remain Effects: interruption is never converted to a diagnostic. */
 export interface IO {
+  applicable(directory: string): Effect.Effect<boolean, unknown>
   snapshot(directory: string): Effect.Effect<string, unknown>
   select(directory: string): Effect.Effect<CheckCommand, unknown>
   check(command: CheckCommand, options: Options): Effect.Effect<CheckResult, unknown>
@@ -40,6 +41,7 @@ export interface IO {
 }
 
 interface State {
+  applicability: "unprobed" | "applicable" | "skipped"
   baseline?: string
   directory?: string
   agent?: string
@@ -57,6 +59,7 @@ export function createGate(io: IO, config: Options = options()) {
   const sessions = new Map<string, State>()
   const directories = new Map<string, Semaphore.Semaphore>()
   const fresh = (): State => ({
+    applicability: "unprobed",
     attempts: 0, checks: 0, dirty: false, terminal: false, denied: false,
     invalidated: Deferred.makeUnsafe<void>(),
     lock: Semaphore.makeUnsafe(1),
@@ -89,11 +92,22 @@ export function createGate(io: IO, config: Options = options()) {
       const value = state(id)
       return guarded(id, value, value.lock.withPermit(Effect.gen(function* () {
         if (!current(id, value) || value.terminal) return
+        if (value.directory !== undefined && value.directory !== directory) {
+          yield* finish(id, value, "Session directory changed during this request.")
+          return
+        }
+        if (value.applicability === "skipped") return
         value.agent = agent
         if (value.baseline !== undefined) return
+        if (value.applicability === "unprobed") {
+          const supported = yield* io.applicable(directory)
+          if (!current(id, value)) return
+          value.directory = directory
+          value.applicability = supported ? "applicable" : "skipped"
+          if (!supported) return
+        }
         const baseline = yield* io.snapshot(directory)
         if (!current(id, value)) return
-        value.directory = directory
         value.baseline = baseline
       })))
     },
@@ -102,6 +116,7 @@ export function createGate(io: IO, config: Options = options()) {
       const value = state(id)
       return guarded(id, value, value.lock.withPermit(Effect.gen(function* () {
         if (!current(id, value) || value.terminal) return
+        if (value.applicability === "skipped" && value.directory === directory) return
         if (value.baseline === undefined || !value.agent || value.directory !== directory) {
           yield* finish(id, value, "No valid initial model-context snapshot for this session directory.")
           return

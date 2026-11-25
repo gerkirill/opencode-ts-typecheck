@@ -1,7 +1,7 @@
 import { Agent, Plugin } from "@opencode/plugin/effect"
 import { Cause, Deferred, Effect } from "effect"
 import { snapshot } from "./changes.ts"
-import { runCheck, selectCommand } from "./checker.ts"
+import { applicable, runCheck, selectCommand } from "./checker.ts"
 import { createGate, options, permissionResource } from "./gate.ts"
 
 type SessionID = Parameters<Plugin.Context["session"]["get"]>[0]["sessionID"]
@@ -26,6 +26,7 @@ export default Plugin.define({
         Effect.orDie,
       )
     const gate = createGate({
+      applicable: (directory) => Effect.tryPromise((signal) => applicable(directory, signal)),
       snapshot: (directory) => Effect.tryPromise((signal) => snapshot(directory, signal)),
       select: (directory) => Effect.tryPromise(() => selectCommand(directory)),
       check: (command, config) => Effect.tryPromise((signal) => runCheck(command, { ...config, signal })),

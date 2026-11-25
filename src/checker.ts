@@ -21,31 +21,52 @@ async function exists(file: string): Promise<boolean> {
   }
 }
 
-export async function selectCommand(directory: string): Promise<CheckCommand> {
-  const cwd = await realpath(directory)
-  if (!(await stat(cwd)).isDirectory()) throw new Error(`Not a directory: ${directory}`)
+async function readManifest(cwd: string, signal?: AbortSignal): Promise<Record<string, unknown>> {
   let pkg: Record<string, unknown> = {}
   const manifest = path.join(cwd, "package.json")
   if (await exists(manifest)) {
     try {
-      const parsed: unknown = JSON.parse(await readFile(manifest, "utf8"))
+      const parsed: unknown = JSON.parse(await readFile(manifest, { encoding: "utf8", signal }))
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("expected an object")
       pkg = parsed as Record<string, unknown>
     } catch (error) {
       throw new Error(`Cannot read package.json in ${cwd}: ${String(error)}`)
     }
   }
+  return pkg
+}
+
+function typecheckScript(pkg: Record<string, unknown>, cwd: string): string | undefined {
   const scripts = pkg.scripts as Record<string, unknown> | undefined
   if (scripts && Object.hasOwn(scripts, "typecheck")) {
     if (typeof scripts.typecheck !== "string" || !scripts.typecheck.trim()) {
-      throw new Error(`Invalid scripts.typecheck in ${manifest}: expected a nonempty string`)
+      throw new Error(`Invalid scripts.typecheck in ${path.join(cwd, "package.json")}: expected a nonempty string`)
     }
+    return scripts.typecheck
+  }
+}
+
+/** Root metadata only: never enumerate files or resolve execution tools here. */
+export async function applicable(directory: string, signal?: AbortSignal): Promise<boolean> {
+  signal?.throwIfAborted()
+  const pkg = await readManifest(directory, signal)
+  const script = typecheckScript(pkg, directory)
+  const supported = script !== undefined || await exists(path.join(directory, "tsconfig.json"))
+  signal?.throwIfAborted()
+  return supported
+}
+
+export async function selectCommand(directory: string): Promise<CheckCommand> {
+  const cwd = await realpath(directory)
+  if (!(await stat(cwd)).isDirectory()) throw new Error(`Not a directory: ${directory}`)
+  const pkg = await readManifest(cwd)
+  if (typecheckScript(pkg, cwd) !== undefined) {
     let manager: string
     if (pkg.packageManager !== undefined) {
       const match = typeof pkg.packageManager === "string"
         ? /^(npm|pnpm|yarn|bun)@\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.exec(pkg.packageManager)
         : null
-      if (!match) throw new Error(`Invalid or unsupported packageManager in ${manifest}`)
+      if (!match) throw new Error(`Invalid or unsupported packageManager in ${path.join(cwd, "package.json")}`)
       manager = match[1]!
     } else {
       const managers = new Set<string>()

@@ -1,8 +1,12 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
 import { Deferred, Effect, Exit, Fiber, Scope } from "effect"
 import type { Plugin } from "@opencode/plugin/effect"
 import plugin from "../src/index.ts"
+import { applicable } from "../src/checker.ts"
 import { createGate, options, permissionResource, type IO } from "../src/gate.ts"
 import type { CheckResult } from "../src/checker.ts"
 
@@ -20,6 +24,7 @@ function fixture(overrides: Partial<IO> = {}) {
     result: failed,
   }
   const io: IO = {
+    applicable: () => Effect.succeed(true),
     snapshot: () => Effect.sync(() => f.fingerprint),
     select: (cwd) => Effect.succeed({ command: "npm", args: ["run", "typecheck"], cwd, label: "npm run typecheck" }),
     check: () => Effect.sync(() => { f.checks++; return f.result }),
@@ -34,6 +39,198 @@ function fixture(overrides: Partial<IO> = {}) {
   const idle = (id = "parent", background: { sessionID: string }[] = []) => run(gate.idle(id, "/repo", background))
   return { f, gate, context, idle }
 }
+
+test("unsupported requests probe once and never reach expensive operations or synthetic input", async () => {
+  let probes = 0
+  let supported = false
+  const calls: string[] = []
+  const forbidden = (name: string) => () => Effect.sync(() => {
+    calls.push(name)
+    throw new Error(`Unexpected ${name}`)
+  })
+  const { gate, context, idle } = fixture({
+    applicable: () => Effect.sync(() => { probes++; return supported }),
+    snapshot: forbidden("snapshot"), select: forbidden("select"),
+    permission: forbidden("permission"), check: forbidden("check"),
+    repair: forbidden("repair"), report: forbidden("report"),
+  })
+  await context()
+  supported = true // Synthetic steps do not reset the decision.
+  for (let i = 0; i < 4; i++) { await context(); await idle() }
+  assert.equal(probes, 1)
+  assert.deepEqual(calls, [])
+  supported = false
+  gate.prompt("parent")
+  await context()
+  await idle()
+  assert.equal(probes, 2)
+  assert.deepEqual(calls, [])
+})
+
+test("child sessions decide applicability independently of a skipped parent", async () => {
+  let supported = false
+  let probes = 0
+  let snapshots = 0
+  const { f, context, idle } = fixture({
+    applicable: () => Effect.sync(() => { probes++; return supported }),
+    snapshot: () => Effect.sync(() => { snapshots++; return "baseline" }),
+  })
+  await context()
+  supported = true
+  await context("child")
+  await idle("child")
+  await idle()
+  await context()
+  assert.equal(probes, 2)
+  assert.equal(snapshots, 2)
+  assert.deepEqual(f.reports, [])
+})
+
+test("applicability changes take effect on the next genuine prompt in both directions", async () => {
+  let supported = false
+  let probes = 0
+  let snapshots = 0
+  const { gate, context, idle } = fixture({
+    applicable: () => Effect.sync(() => { probes++; return supported }),
+    snapshot: () => Effect.sync(() => { snapshots++; return "baseline" }),
+  })
+  await context()
+  supported = true
+  await context()
+  await idle()
+  assert.equal(snapshots, 0)
+  gate.prompt("parent")
+  await context()
+  await idle()
+  assert.equal(snapshots, 2)
+  supported = false
+  gate.prompt("parent")
+  await context()
+  await idle()
+  assert.equal(probes, 3)
+  assert.equal(snapshots, 2)
+})
+
+test("a genuine prompt interrupts a stale applicability probe", async () => {
+  const entered = Deferred.makeUnsafe<void>()
+  let probes = 0
+  let interrupted = false
+  let snapshots = 0
+  const { f, gate, context, idle } = fixture({
+    applicable: () => ++probes === 1
+      ? Deferred.succeed(entered, undefined).pipe(
+        Effect.andThen(Effect.never),
+        Effect.onInterrupt(() => Effect.sync(() => { interrupted = true })),
+      )
+      : Effect.succeed(false),
+    snapshot: () => Effect.sync(() => { snapshots++; return "baseline" }),
+  })
+  const pending = context()
+  await run(Deferred.await(entered))
+  gate.prompt("parent")
+  await context()
+  await pending
+  await idle()
+  assert.equal(interrupted, true)
+  assert.equal(probes, 2)
+  assert.equal(snapshots, 0)
+  assert.deepEqual(f.reports, [])
+})
+
+test("concurrent context callbacks share one applicability decision", async () => {
+  const entered = Deferred.makeUnsafe<void>()
+  const release = Deferred.makeUnsafe<void>()
+  let probes = 0
+  const { context, idle } = fixture({
+    applicable: () => Effect.gen(function* () {
+      probes++
+      yield* Deferred.succeed(entered, undefined)
+      yield* Deferred.await(release)
+      return false
+    }),
+  })
+  const first = context()
+  await run(Deferred.await(entered))
+  const second = context()
+  const completion = idle()
+  await run(Deferred.succeed(release, undefined))
+  await Promise.all([first, second, completion])
+  assert.equal(probes, 1)
+})
+
+test("configuration disappearing from an applicable request remains unresolved", async () => {
+  let supported = true
+  let probes = 0
+  const { f, context, idle } = fixture({
+    applicable: () => Effect.sync(() => { probes++; return supported }),
+    select: () => Effect.fail(new Error("no tsconfig.json")),
+  })
+  await context()
+  supported = false
+  f.fingerprint = "config removed"
+  await idle()
+  assert.equal(probes, 1)
+  assert.equal(f.checks, 0)
+  assert.equal(f.repairs.length, 0)
+  assert.match(f.reports[0]!, /no tsconfig.json/)
+})
+
+test("probe errors are unresolved without scanning; skipped requests retain directory safety", async () => {
+  let snapshots = 0
+  const bad = fixture({
+    applicable: () => Effect.fail(new Error("bad manifest")),
+    snapshot: () => Effect.sync(() => { snapshots++; return "baseline" }),
+  })
+  await bad.context()
+  await bad.idle()
+  assert.equal(snapshots, 0)
+  assert.equal(bad.f.checks, 0)
+  assert.equal(bad.f.repairs.length, 0)
+  assert.match(bad.f.reports[0]!, /bad manifest/)
+  for (const hook of ["context", "idle"] as const) {
+    const skipped = fixture({ applicable: () => Effect.succeed(false) })
+    await skipped.context()
+    await run(hook === "context"
+      ? skipped.gate.context("parent", "/other", "agent")
+      : skipped.gate.idle("parent", "/other", []))
+    assert.equal(skipped.f.reports.length, 1)
+    assert.match(skipped.f.reports[0]!, /directory/)
+  }
+})
+
+test("real non-TS root with generated JSON/JS stays scan-free until the next prompt", async (t) => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "typecheck-unsupported-"))
+  t.after(() => rm(dir, { recursive: true, force: true }))
+  for (const name of [".venv", "target", "generated"]) {
+    await mkdir(path.join(dir, name))
+    await writeFile(path.join(dir, name, "data.json"), '{"initial":true}')
+    await writeFile(path.join(dir, name, "output.js"), "export const value = 1")
+  }
+  await writeFile(path.join(dir, "pyproject.toml"), "")
+  await writeFile(path.join(dir, "Cargo.toml"), "")
+  let probes = 0
+  const calls: string[] = []
+  const forbidden = (name: string) => () => Effect.sync(() => {
+    calls.push(name)
+    throw new Error(`Unexpected ${name}`)
+  })
+  const { gate } = fixture({
+    applicable: (directory) => Effect.tryPromise(async () => {
+      probes++
+      return applicable(directory)
+    }),
+    snapshot: forbidden("snapshot"), select: forbidden("select"),
+    check: forbidden("check"), permission: forbidden("permission"),
+    repair: forbidden("repair"), report: forbidden("report"),
+  })
+  await run(gate.context("parent", dir, "agent"))
+  await writeFile(path.join(dir, "generated", "data.json"), '{"changed":true}')
+  await writeFile(path.join(dir, "tsconfig.json"), "{}")
+  await run(gate.context("parent", dir, "agent"))
+  await run(gate.idle("parent", dir, []))
+  assert.equal(probes, 1)
+  assert.deepEqual(calls, [])
+})
 
 test("initial baseline survives multiple model steps and ignores preexisting edits", async () => {
   const { f, context, idle } = fixture()
