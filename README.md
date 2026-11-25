@@ -161,3 +161,5 @@ not fixed by silently upgrading the SDK beyond the tested host version.
 
 See [verification evidence](docs/verification.md) in the repository for the
 tested host, automated coverage, packaging checks, and the live repair result.
+Design choices, alternatives, and trade-offs are recorded in the
+[architecture decision records](docs/ADR/README.md).
