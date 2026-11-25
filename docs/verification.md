@@ -4,6 +4,15 @@ Target: OpenCode 2.4.1 on Linux, Node 24.13.1, npm 11.8.0,
 `@opencode/plugin` 2.4.1, Effect 4.1.0, TypeScript 7.0.2.
 Date: 2026-11-25.
 
+## Dependency compatibility
+
+Host libraries are peer dependencies. Development pins `@opencode/plugin@2.4.1`
+and `effect@4.1.0` to match the tested host; do not bundle a second Effect runtime.
+Audit findings below describe that tested dependency graph, not a live audit.
+Do not silently upgrade the SDK beyond the tested host version to resolve them.
+
+## Review
+
 Independent review approved the implementation after the two bounded
 corrections below, then approved the runtime/packaging evidence. No remaining
 review blockers were identified at this fidelity.

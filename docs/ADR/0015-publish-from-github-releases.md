@@ -40,4 +40,4 @@ commit.
 ## References
 
 - [Publish workflow](../../.github/workflows/publish.yml)
-- [Release instructions](../../README.md#github-actions-publishing)
+- [Release instructions](../releasing.md#github-actions-publishing)
