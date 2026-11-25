@@ -100,6 +100,22 @@ The earlier six-file packaging evidence describes the pre-license artifact.
 The dry-run does not establish real publishing authorization or reserve the
 package name. No package was uploaded, and no public repository URL was invented.
 
+## GitHub Actions publishing preparation
+
+The release workflow was checked with `actionlint` 1.7.12 (exit 0).
+Its actual validation, check, packing, and dry-run shell steps were also
+executed locally:
+
+- Matching `v0.1.0` was accepted; mismatched `v9.9.9` was rejected.
+- Manual-dispatch validation succeeded without a release tag.
+- All 30 tests passed with forced color, and both typechecks passed.
+- The seven-file archive assertion and tarball publication dry-run passed.
+
+The upload step was not executed. Hosted Actions behavior, the repository
+secret, real registry authorization, and provenance signing remain unverified
+until an authorized release. No token was requested through chat or written
+to source.
+
 ## Security and limits
 
 `npm audit` reported 24 moderate transitive findings through the pinned SDK

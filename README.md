@@ -156,14 +156,48 @@ Create `.artifacts` first if it does not exist. The package contains only
 playground, tests, local evidence, or process state.
 Test the generated tarball in a disposable project before release.
 
-Before the first release, authenticate with npm (`npm login`) and confirm the
-package name is still available. No repository URL is declared until a public
-repository exists. Version `0.1.0` is the initial release.
+Before the first release, confirm the package name is still available.
+Version `0.1.0` is the initial release. For manual publishing, authenticate
+with npm (`npm login`).
 Use `npm publish --dry-run` to inspect the release without uploading it, then
 explicitly run `npm publish` when ready. Both commands run `prepublishOnly`,
 which requires the repository typecheck and tests to pass.
 Registry and public access are set in `publishConfig`.
 Publishing a prebuilt tarball does not replace the source-check step above.
+
+### GitHub Actions publishing
+
+The [publish workflow](https://github.com/gerkirill/opencode-ts-typecheck/blob/master/.github/workflows/publish.yml)
+publishes on a **published, non-prerelease GitHub Release**. Pushing a commit or
+tag alone does not publish. The release tag must exactly match `v` plus the
+version in `package.json`, for example `v0.1.0`.
+
+Add your npm publishing token as the `NPM_TOKEN` repository secret:
+
+```sh
+gh secret set NPM_TOKEN --repo gerkirill/opencode-ts-typecheck
+```
+
+Enter the token at the hidden prompt; do not put it in source, chat, or a command
+argument. Use a publishing-capable token with bypass 2FA enabled, the minimum
+required permissions, and a valid expiration date. For the first publication,
+the token must permit creating this package, not only updating existing packages.
+
+The workflow checks the release identity, runs tests with color enabled,
+typechecks the playground, checks the archive's allowlist, and dry-runs
+publication before uploading the same tarball with npm provenance.
+The token is exposed only to the final publish step. That step skips lifecycle
+scripts because source checks already ran before packing.
+
+To release, commit and push the version change and create a GitHub Release
+with the matching tag at that commit. Never reuse a published npm version.
+Prereleases are skipped. Running the workflow manually via Actions performs
+verification and a dry-run only; it never publishes.
+The initial release must include this workflow.
+
+An npm trusted publisher (OIDC) can replace the token later; this workflow
+currently uses your `NPM_TOKEN` for npm authentication. Its OIDC permission is
+used to sign provenance, not as a substitute for the token setup.
 
 Host libraries are peer dependencies. Development uses the matching
 `@opencode/plugin@2.4.1` and `effect@4.1.0`; do not bundle a second Effect

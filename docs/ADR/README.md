@@ -24,6 +24,7 @@ Dates refer to the implementation decision, not a future compatibility promise.
 | [0012](0012-bound-remediation-and-retain-unresolved-outcomes.md) | Bound remediation and retain unresolved outcomes |
 | [0013](0013-publish-source-with-host-runtime-peers.md) | Publish source with host runtime peers |
 | [0014](0014-verify-boundaries-with-layered-evidence.md) | Verify boundaries with layered evidence |
+| [0015](0015-publish-from-github-releases.md) | Publish from GitHub Releases |
 
 Accepted records describe the current baseline, including its limitations.
 When a decision changes, add a new numbered record and mark the earlier record

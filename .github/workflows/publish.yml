@@ -1,0 +1,96 @@
+name: Publish to npm
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.event_name != 'release' || !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            playground/package-lock.json
+
+      - name: Validate release identity
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict"
+          import { readFileSync } from "node:fs"
+          const pkg = JSON.parse(readFileSync("package.json", "utf8"))
+          assert.equal(pkg.name, "opencode-ts-typecheck")
+          assert.match(pkg.version, /^\d+\.\d+\.\d+$/, "Only stable versions are supported")
+          if (process.env.GITHUB_EVENT_NAME === "release") {
+            assert.equal(process.env.RELEASE_TAG, `v${pkg.version}`, "Release tag must match package.json")
+          }
+          NODE
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm --prefix playground ci
+
+      - name: Check source and playground
+        env:
+          FORCE_COLOR: "1"
+        run: |
+          npm run check
+          npm --prefix playground run typecheck
+
+      - name: Pack and inspect release
+        id: pack
+        run: |
+          npm pack --json --pack-destination "$RUNNER_TEMP" > "$RUNNER_TEMP/pack.json"
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict"
+          import { appendFileSync, readFileSync } from "node:fs"
+          import path from "node:path"
+          const [pkg] = JSON.parse(readFileSync(path.join(process.env.RUNNER_TEMP, "pack.json"), "utf8"))
+          assert.deepEqual(pkg.files.map(file => file.path).sort(), [
+            "LICENSE", "README.md", "package.json",
+            "src/changes.ts", "src/checker.ts", "src/gate.ts", "src/index.ts",
+          ].sort())
+          appendFileSync(process.env.GITHUB_OUTPUT, `tarball=${path.join(process.env.RUNNER_TEMP, pkg.filename)}\n`)
+          NODE
+
+      - name: Dry-run publication
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: npm publish "$TARBALL" --dry-run --ignore-scripts --access public
+
+      - name: Publish verified tarball
+        if: github.event_name == 'release'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::Set the NPM_TOKEN repository secret before publishing."
+            exit 1
+          fi
+          npm publish "$TARBALL" --ignore-scripts --provenance --access public
